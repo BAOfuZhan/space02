@@ -75,6 +75,22 @@ RESERVE_NEXT_DAY = True  # 预约明天而不是今天的
 RELOGIN_EVERY_LOOP = True
 
 
+def _normalize_times(times):
+    """把 times 统一成 [start, end] 结构。"""
+    if isinstance(times, list) and len(times) >= 2:
+        return [str(times[0]).strip(), str(times[1]).strip()]
+    if isinstance(times, tuple) and len(times) >= 2:
+        return [str(times[0]).strip(), str(times[1]).strip()]
+    if isinstance(times, str):
+        s = times.strip()
+        for sep in ["-", "~", "至"]:
+            if sep in s:
+                parts = [p.strip() for p in s.split(sep, 1)]
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    return parts
+    return times
+
+
 def _load_runtime_config(config_path, dispatch_mode, action):
     if dispatch_mode:
         payload_raw = os.environ.get("DISPATCH_PAYLOAD")
@@ -109,10 +125,11 @@ def _load_runtime_config(config_path, dispatch_mode, action):
         reserve_list = []
         for slot in slots:
             seatid = slot.get("seatid")
+            times = _normalize_times(slot.get("times"))
             reserve_list.append({
                 "username": username,
                 "password": decrypted_password,
-                "times": slot.get("times"),
+                "times": times,
                 "roomid": slot.get("roomid"),
                 "seatid": seatid if isinstance(seatid, list) else [seatid],
                 "seatPageId": slot.get("seatPageId") or "",
