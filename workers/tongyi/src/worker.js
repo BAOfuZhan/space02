@@ -191,6 +191,25 @@ async function dispatchGitHub(token, repo, payload) {
   }
 }
 
+async function dispatchGitHubVerbose(token, repo, payload) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "TongYi-Worker",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({ event_type: "reserve", client_payload: payload }),
+    });
+    const text = await res.text();
+    return { ok: res.status === 204, status: res.status, detail: text };
+  } catch (e) {
+    return { ok: false, status: 0, detail: e.message || String(e) };
+  }
+}
+
 // ─── 创建并初始化 GitHub 仓库（内容复制自 hcd）───
 const SOURCE_REPO_NAME = "hcd";
 
@@ -643,8 +662,17 @@ async function handleAPI(request, env, path) {
       endtime: school.endtime,
       strategy: randomizeStrategy(school.strategy),
     };
-    const ok = await dispatchGitHub(env.GH_TOKEN, school.repo, payload);
-    return jsonResp({ ok, slots: activeSlots.length });
+    const result = await dispatchGitHubVerbose(env.GH_TOKEN, school.repo, payload);
+    if (!result.ok) {
+      return jsonResp({
+        ok: false,
+        error: "GitHub dispatch failed",
+        status: result.status,
+        detail: result.detail,
+        repo: school.repo,
+      }, 502);
+    }
+    return jsonResp({ ok: true, slots: activeSlots.length, repo: school.repo });
   }
 
   // POST /api/encrypt
@@ -1492,7 +1520,12 @@ async function triggerUser(userId) {
   if (res.ok) {
     toast("已触发");
   } else {
-    toast(res.error || "触发失败", "error");
+    const msg = [
+      res.error || "触发失败",
+      res.status ? ("status=" + res.status) : "",
+      res.detail ? res.detail.slice(0, 120) : "",
+    ].filter(Boolean).join(" | ");
+    toast(msg, "error");
   }
 }
 
